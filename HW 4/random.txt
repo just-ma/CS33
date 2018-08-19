@@ -1,0 +1,37 @@
+A. 
+Always yields 1. 
+
+When integers are converted to double, the top 32 bits of the double are simply zeroed out. Thus, x == dx is always true, since nothing is cut off or added. When converting to floats, there may be a loss of information, but that amount will be the same for both integers and doubles.
+
+
+B. 
+Does not always yield 1.
+
+EX: x=0, y=1, dx=0, dy=1
+    dx-dy = 0xffffffffffffffff		overflow occurs
+    x-y = 0xffffffff
+    0xfffffffffffffff != 0x00000000fffffff
+
+
+C. 
+Always yields 1.
+
+Associative property states when adding numbers, grouping and order does not affect the outcome. Variables on both sides are equal, so no matter which you decide to add together first, the results is equal. Overflow does not affect the end result since both sides will overflow the same amount.
+
+
+D. 
+Does not always yield 1.
+
+EX: x=INT_MAX, y=INT_MAX, z=INT_MAX-10000
+    (dx * dy) * dz = 9903474183587842750985273344
+    dx * (dy * dz) = 9903474183587843850496901120
+    9903474183587842750985273344 != 9903474183587843850496901120
+
+
+E. 
+Does not always yield 1
+
+EX: x=0, z=1, dx=0, dz=1
+    dx/dx = NaN
+    dz/dz = 1
+    NaN != 1

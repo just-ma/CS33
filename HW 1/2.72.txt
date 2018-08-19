@@ -1,0 +1,5 @@
+A. 
+The sizeof() operator outputs a size_t, which is unsigned since it cannot be negative. When an integer (signed) is in an operation with an unsigned variable, the output is converted to unsigned; thus, the output will never be less than 0, so the if statement will always return true.
+
+B.
+if (maxbytes >= sizeof(val))

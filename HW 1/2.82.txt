@@ -1,0 +1,38 @@
+A. 
+Does not always yield 1. Negating most integers simply flips their sign; however, INT_MAX is (2^31)-1 while INT_MIN is -(2^31). Thus, negating INT_MIN wraps it back to INT_MIN since it overflows by 1.
+	EX: x=INT_MIN, y=2.
+	((INT_MIN)<(2))==(-(INT_MIN)>-(2))
+	INT_MIN<2 == INT_MIN > -2
+	1 =/= 0.
+ 
+    
+B. 
+Always yields 1. Moving the free x and y to the right side, we get (x+y)<<4 == 16y+16x without multiplying or dividing by a negative. A left shift of 4 is equivalent with multiplying by 2^4 or 16. The equation becomes 16*(x+y) == 16(x+y). Integers wrap around when going above INT_MAX or below INT_MIN; thus, if overflow occurs, it will affect both sides equally.
+ 
+
+C. 
+Always yields 1. The inverse operation can be rewritten as (-x-1) since it inverses all the bits. The equation can be rewritten as (-x-1)+(-y-1)+1 == -(x+y)-1 --> -x-y-1 == -x-y-1. Overflow will affect both sides equally.
+ 
+
+D. 
+Always yields 1. The left side will output unsigned since both integers are unsigned. The right side will also output unsigned since (unsigned) is in front of the two signed integers. Subtraction works on the bit level, so although the numbers will be interpreted differently between signed and unsigned, in the end, both output are unsigned. The equation can be simplified to ux-uy == -(uy-ux) --> ux-uy == ux-uy.
+ 
+
+E. 
+Always yields 1. The only effect shifting to the right twice then to the left twice is zeroing out the 2 least significant bits. Every other bit remains the same. With both positive and negative integers, all bits other than the most significant one are positive and can only increase the integer. Thus, when any bits other than the most significant one are zeroed out, the new integer will always be less than or equal to the original value.
+ 
+
+F. 
+Does not always yield 1. The right side must be positive since all integers are unsigned. However, the left side can be negative since the most significant bit will smear with right shifts.
+	EX: x = -1, ux = UINT_MAX
+	(-1) >> 1 == (UINT_MAX >> 1) + (UINT_MAX & (-1 << 31))
+	-1 == (2147483647) + (UINT_MAX & (2147483648))
+	-1 == 2147483647 + 2147483648
+	-1 =/= UINT_MAX
+Both have the same bits but are interpreted differently since one is signed and the other is not.
+
+
+G. Does not always yield 1. This works well for positive integers; however, the modulus operation falls apart with negative integers. 
+	EX: x = -1
+	(-1) % 128 == (-1) & 127
+	-1 =/= 127

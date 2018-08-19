@@ -1,0 +1,26 @@
+Justin Ma 605804167
+
+3.70
+
+A.	
+	e1.p offset = 0 bytes
+	e1.y offset = 8 bytes
+	e2.x offset = 0 bytes
+	e2.next offset = 8 bytes
+
+B. 
+   16 bytes
+
+C.
+	(up -> e2.x) = *(up -> e2.next -> e1.p) - (up -> e2.next -> e1.y)
+
+
+Work shown for:
+A. 
+   Pointers are 8 bytes, and long’s are also 8 bytes. Both have alignment of 8 bytes, so the first object in the first structure has offset of 0 and the second item as offset 8 bytes. The same goes for the second structure in the union, since both start at the same address. 
+
+B.
+	Each structure has a size of 16 bytes. Both start at the same address since they are in a union. Thus, the union requires 16 bytes. 
+
+C. 
+   Line 2 is ambiguous. %rax can either be e1.y or e2.next. Line 3 clears up this ambiguity since the contents in %rax are moved to %rdx, meaning %rax stores a pointer. Thus, *next is stored in %rax. In line 4, %rdx now refers to the beginning of a new ele union, meaning it either holds e1.p or e2.x. In line 5, e1.y from the second union is subtracted from %rdx, meaning %rdx holds e2.x, which is not a pointer. Lastly, in line 6, the result in %rdx is moved to the contents of %rdi.

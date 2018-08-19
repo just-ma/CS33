@@ -1,0 +1,300 @@
+Justin Ma
+604805167
+
+
+
+Decompress openmplab.tgz.
+COMMAND:
+	$ tar -xvf openmplab.tgz
+
+
+
+Check which functions take the longest amount of time to determine the bottleneck of the code. Use gprof to check.
+COMMAND:
+	$ make seq GPROF=1
+OUTPUT:
+	gcc -o seq  -O2 -pg filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./seq
+OUTPUT:
+	FUNC TIME : 0.769564
+	TOTAL TIME : 2.917547
+
+
+
+The func time is what we are concerned about. Now, output the table of time each function takes.
+COMMAND:
+	$ gprof seq | less
+OUTPUT:
+
+	Flat profile:
+
+	Each sample counts as 0.01 seconds.
+	  %   cumulative   self              self     total           
+	 time   seconds   seconds    calls  ms/call  ms/call  name    
+	 77.03      0.60     0.60       15    40.05    41.32  func1
+	 12.84      0.70     0.10  5177344     0.00     0.00  rand2
+	  3.85      0.73     0.03   491520     0.00     0.00  findIndexBin
+	  2.57      0.75     0.02                             sequence
+	  1.28      0.76     0.01       15     0.67     0.67  func4
+	  1.28      0.77     0.01        2     5.01     5.01  init
+	  1.28      0.78     0.01        1    10.01    10.01  imdilateDisk
+	  0.00      0.78     0.00   983042     0.00     0.00  round
+	  0.00      0.78     0.00       16     0.00     0.00  dilateMatrix
+	  0.00      0.78     0.00       15     0.00     0.00  func2
+	  0.00      0.78     0.00       15     0.00     0.00  func3
+	  0.00      0.78     0.00       15     0.00     2.00  func5
+	  0.00      0.78     0.00       15     0.00     0.00  rand1
+	  0.00      0.78     0.00        2     0.00     0.00  get_time
+	  0.00      0.78     0.00        1     0.00    81.12  addSeed
+	  0.00      0.78     0.00        1     0.00     0.00  elapsed_time
+	  0.00      0.78     0.00        1     0.00     0.00  fillMatrix
+	  0.00      0.78     0.00        1     0.00     0.00  func0
+	  0.00      0.78     0.00        1     0.00     0.00  getNeighbors
+
+
+This reveals that func1 is the bottleneck of the code by taking up 77.03% of the total time. Thus, we should focus on func1 first.
+
+For func1, #pragma omp parallel for was used on both for loops. firstprivate() was used for all shared variables and private() for all private variables.
+
+int Ones was being casted to a double every iteration of the second loop. I casted Ones to double outside the loop, so it would only run once.
+
+After these changes were implemented, I compared the run time among various numbers of threads. I set omp_set_num_threads() to various numbers starting with 32.
+
+num_threads = 32
+COMMAND:
+	$ make omp
+OUTPUT:
+	gcc -o omp  -O3 -fopenmp filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./omp
+OUTPUT:
+	FUNC TIME : 0.338560
+	TOTAL TIME : 2.152375
+
+
+num_threads = 31
+OUTPUT:
+	FUNC TIME : 0.207847
+	TOTAL TIME : 2.080995
+
+
+num_threads = 30
+OUTPUT:
+	FUNC TIME : 0.176086
+	TOTAL TIME : 2.021051
+
+
+num_threads = 29
+OUTPUT:
+	FUNC TIME : 0.182321
+	TOTAL TIME : 2.039268
+
+
+num_threads = 28
+OUTPUT:
+	FUNC TIME : 0.188961
+	TOTAL TIME : 2.038844
+
+
+Analyzing the results, there is a decrease in func time decreasing from 32. The minimum occurs at 30, and the time increases from there. Thus, I decided to stick with
+ num_threads = 30 to minimize func time.
+
+Again, check which functions take the longest amount of time to determine the new bottleneck of the code.
+COMMAND:
+	$ make omp GPROF=1
+OUTPUT:
+	gcc -o omp  -O2 -pg -fopenmp filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./omp
+OUTPUT:
+	FUNC TIME : 0.184763
+	TOTAL TIME : 1.999528
+
+
+
+The func time is what we are concerned about. Now, output the table of time each function takes with gprof.
+COMMAND:
+	$ gprof omp | less
+OUTPUT:
+	Flat profile:
+
+	Each sample counts as 0.01 seconds.
+	  %   cumulative   self              self     total           
+	 time   seconds   seconds    calls  ms/call  ms/call  name    
+	 63.57      0.40     0.40        8    50.06    53.98  filter
+	 25.43      0.56     0.16  4228362     0.00     0.00  rand2
+	  3.18      0.58     0.02       15     1.33     1.33  func5
+	  3.18      0.60     0.02        2    10.01    10.01  init
+	  1.59      0.61     0.01    45508     0.00     0.00  round
+	  1.59      0.62     0.01        1    10.01    10.01  imdilateDisk
+	  1.59      0.63     0.01                             sequence
+	  0.00      0.63     0.00   491520     0.00     0.00  findIndexBin
+	  0.00      0.63     0.00       16     0.00     0.00  dilateMatrix
+	  0.00      0.63     0.00       15     0.00     0.00  func1
+	  0.00      0.63     0.00       15     0.00     0.00  func2
+	  0.00      0.63     0.00       15     0.00     0.00  func3
+	  0.00      0.63     0.00       15     0.00     0.00  func4
+	  0.00      0.63     0.00       15     0.00     0.00  rand1
+	  0.00      0.63     0.00        2     0.00     0.00  get_time
+	  0.00      0.63     0.00        1     0.00   158.91  addSeed
+	  0.00      0.63     0.00        1     0.00     0.00  elapsed_time
+	  0.00      0.63     0.00        1     0.00     0.00  fillMatrix
+	  0.00      0.63     0.00        1     0.00     0.00  func0
+	  0.00      0.63     0.00        1     0.00     0.00  getNeighbors
+
+
+Now, func5 is the bottleneck of the code by taking up 3.18% of the time. So, we focus on increasing the performance of that.
+
+For func5, #pragma omp parallel for was used on both for loops. firstprivate() was used for all shared variables and private() for all private variables.
+
+The value for weights[i] inside the second for loop would always be the same since it only depends on n, and n does not change. Thus, this is loop-invariant code, so
+ it can be taken out of the loop so it’s only calculated once. 
+
+With the enhanced-performance version of func5, I check the run time.
+COMMAND:
+	$ make omp
+OUTPUT:
+	gcc -o omp  -O3 -fopenmp filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./omp
+OUTPUT:
+	FUNC TIME : 0.062185
+	TOTAL TIME : 1.934339
+
+
+This is much better than before. Now, check for bottlenecks again.
+COMMAND:
+	$ make omp GPROF=1
+OUTPUT:
+	gcc -o omp  -O2 -pg -fopenmp filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./omp
+OUTPUT:
+	FUNC TIME : 0.164049
+	TOTAL TIME : 2.107470
+
+
+
+The func time is what we are concerned about. Now, output the table of time each function takes with gprof.
+COMMAND:
+	$ gprof omp | less
+OUTPUT:
+	Flat profile:
+
+	Each sample counts as 0.01 seconds.
+	  %   cumulative   self              self     total           
+	 time   seconds   seconds    calls  ms/call  ms/call  name    
+	 60.94      0.42     0.42       14    30.03    34.38  filter
+	 15.96      0.53     0.11  4224583     0.00     0.00  rand2
+	  8.71      0.59     0.06    11643     0.01     0.01  findIndexBin
+	  8.71      0.65     0.06        1    60.07   169.41  addSeed
+	  2.90      0.67     0.02        2    10.01    10.01  init
+	  1.45      0.68     0.01        1    10.01    10.01  imdilateDisk
+	  1.45      0.69     0.01                             sequence
+	  0.00      0.69     0.00    52592     0.00     0.00  round
+	  0.00      0.69     0.00       16     0.00     0.00  dilateMatrix
+	  0.00      0.69     0.00       15     0.00     0.00  func1
+	  0.00      0.69     0.00       15     0.00     0.00  func2
+	  0.00      0.69     0.00       15     0.00     0.00  func3
+	  0.00      0.69     0.00       15     0.00     0.00  func4
+	  0.00      0.69     0.00       15     0.00     0.00  func5
+	  0.00      0.69     0.00       15     0.00     0.00  rand1
+	  0.00      0.69     0.00        2     0.00     0.00  get_time
+	  0.00      0.69     0.00        1     0.00     0.00  elapsed_time
+	  0.00      0.69     0.00        1     0.00     0.00  fillMatrix
+	  0.00      0.69     0.00        1     0.00     0.00  func0
+	  0.00      0.69     0.00        1     0.00     0.00  getNeighbors
+
+
+All functions take up less than 0.01% of the time which is enough improvement. Any more will be unnoticeable. 
+
+The func time went from 0.769564 to 0.062185. The speedup is:
+
+	0.769564 / 0.062185 = 12.375x
+
+
+
+To check for correctness:
+COMMAND:
+	$ make check
+OUTPUT:
+	gcc -o omp  -O3 -fopenmp filter.c main.c func.c util.c -lm
+	cp omp filter
+	./filter
+	FUNC TIME : 0.068143
+	TOTAL TIME : 2.180276
+	diff --brief correct.txt output.txt
+
+
+This outputs nothing more, so everything runs correctly.
+
+
+
+To check for memory leaks:
+COMMAND:
+	$ make omp MTRACE=1
+OUTPUT:
+	gcc -o omp  -O3 -DMTRACE -fopenmp filter.c main.c func.c util.c -lm
+COMMAND:
+	$ ./omp
+OUTPUT:
+	FUNC TIME : 0.109186
+	TOTAL TIME : 2.046726
+COMMAND:
+	$ make checkmem
+OUTPUT:
+	Memory not freed:
+	-----------------
+	           Address     Size     Caller
+	addr2line: 'filter': No such file
+	0x0000000001e0d0d0     0xd0  at 
+	0x0000000001e0d1b0   0x1e90  at 
+	0x0000000001e0f050     0xc0  at 
+	addr2line: 'filter': No such file
+	0x0000000001e0f120     0xf8  at 
+	addr2line: 'filter': No such file
+	0x0000000001e0f220    0x240  at 
+	0x0000000001e0f470    0x240  at 
+	0x0000000001e0f6c0    0x240  at 
+	0x0000000001e0f910    0x240  at 
+	0x0000000001e0fb60    0x240  at 
+	0x0000000001e0fdb0    0x240  at 
+	0x0000000001e10000    0x240  at 
+	0x0000000001e10250    0x240  at 
+	0x0000000001e104a0    0x240  at 
+	0x0000000001e106f0    0x240  at 
+	0x0000000001e10940    0x240  at 
+	0x0000000001e10b90    0x240  at 
+	0x0000000001e10de0    0x240  at 
+	0x0000000001e11030    0x240  at 
+	0x0000000001e11280    0x240  at 
+	0x0000000001e114d0    0x240  at 
+	0x0000000001e11720    0x240  at 
+	0x0000000001e11970    0x240  at 
+	0x0000000001e11bc0    0x240  at 
+	0x0000000001e11e10    0x240  at 
+	0x0000000001e12060    0x240  at 
+	0x0000000001e122b0    0x240  at 
+	0x0000000001e12500    0x240  at 
+	0x0000000001e12750    0x240  at 
+	0x0000000001e129a0    0x240  at 
+	0x0000000001e12bf0    0x240  at 
+	0x0000000001e12e40    0x240  at 
+	0x0000000001e13090    0x240  at 
+	0x0000000001e132e0    0x240  at 
+	
+
+Since this outputs “Memory not freed:”, there are no memory leaks we need to worry about.
+
+
+
+To check format:
+COMMAND:
+	expand func.c | awk '/\r/ || 200 < length'
+[NO OUTPUT]
+
+
+No output means no problems.
+
+

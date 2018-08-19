@@ -1,0 +1,21 @@
+Justin Ma 604805167
+
+3.68
+
+A = 9
+B = 5
+
+
+The two structures look like the following with the highest address on the right:
+
+ str1:
+[ 8 ][ buffer1 ][ 4 x A x B ]
+
+str2:
+[ 8 ][ buffer2 ][ 2 x A ][ 4 ][ buffer3 ][ B ]
+
+Line 2 reveals that [ buffer3 ] + [ B ] is 8 bytes long. Buffer3 is less than 3 meaning B must be between 5 and 8, inclusive. 
+
+Line 4 reveals that [ buffer1 ] + [ 4 x A x B ] is 184 bytes long. [ 4 x A x B ] must be divisible by 4 bytes, meaning buffer1 is either 0 or 4 bytes. Thus, [ 4 x A x B ] must be either 184 or 180 bytes, and [ A x B ] must be either 45 or 46. The only number between 5 and 8 that can divide either of these numbers is 5, which can only divide 45. Thus, B = 5, and A = 45/5 = 9.
+
+To check this, line 3 reveals that [ buffer2 ] + [ 2 x A ] + [ 4 ] + [ buffer3 ] + [ B ] is 32 bytes long, which means [ buffer2 ] + [ 2 x A ] is 20 bytes long (32 - 8 - 4). If A = 9, [ buffer2 ] + [ 2 x A ] will indeed be 20 bytes long with buffer2 being 2 bytes long. 

@@ -1,0 +1,14 @@
+ Justin Ma
+604805167
+
+
+12.17
+A.) Right after the thread is created, the exit() function is called, which terminates the process. This doesn’t wait for the thread to finish, so the thread is terminated before it can print “Hello world!\n”.
+
+B.) 
+Pthread_join(tid, NULL);
+Pthread_exit(NULL);
+
+
+12.25
+The function echo_cnt is thread safe. Mutex allows multiple threads to safely share the same resource by locking it when one thread is using it, and unlocking it when it’s done. However, it is not reentrant since the threads are sharing that resource through mutex. Interruption in the middle of execution, when a thread is using that resource, will not work.

