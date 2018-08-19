@@ -1,7 +1,7 @@
 /* 
  * CS:APP Data Lab 
  * 
- * Justin Ma 604805167
+ * Justin Ma
  * 
  * bits.c - Source file with your solutions to the Lab.
  *          This is the file you will hand in to your instructor.
