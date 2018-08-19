@@ -43,9 +43,9 @@ Compile sthttpd-2.27.0 three times with different flags. The first one is marked
 ==========================================================
 3 / 4.)
 Calculate the port number.
-	  SP = 12330 + 3 * (604805167 % 293) + 1 = 12733
-	  AS = 12330 + 3 * (604805167 % 293) + 2 = 12734
-	  NO = 12330 + 3 * (604805167 % 293) + 3 = 12735
+	  SP = 12330 + 3 * (123456789 % 293) + 1 = 12733
+	  AS = 12330 + 3 * (123456789 % 293) + 2 = 12734
+	  NO = 12330 + 3 * (123456789 % 293) + 3 = 12735
 
 Test the servers by running them. Open a new console, log in with ssh, and check
  if it is running and outputting the correct file contents.
