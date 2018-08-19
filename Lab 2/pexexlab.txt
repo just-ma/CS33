@@ -1,6 +1,3 @@
-Justin Ma
-604805167
-
 Gather instruction traces:
 
 gdb ~eggert/bin64/bin/emacs-25.2
